@@ -6,6 +6,7 @@
 #include <string.h>
 #include <sys/errno.h>
 #include <stdbool.h>
+#include <ctype.h>
 
 #define COMMAND_NUM_ARGS 5
 #define COMMAND_INPUT_FLAG "-i"
@@ -15,37 +16,44 @@
 #define MAX_LINE_LENGTH 200
 #define DATE_SIZE 38
 
-#define POSITION_OF_RES 60
-#define POSITION_OF_RES_VAL 64
-#define POSITION_OF_BATTERY_VAL 76
+#define POSITION_OF_RES 98
+#define POSITION_OF_RES_VAL 102
+#define POSITION_OF_BATTERY_VAL 114
 
-#define DW_CONTROL_POSITION 53
-#define DW_EVENT_AGENT_LEN 11
-
-
+#define INT_MAX 2147483647
+#define INT_MIN -2147483648
 
 bool compactLine(char*, char*);
-char* isBatteryLine(char*, FILE*, FILE*);
+char* isBatteryLine(char*, FILE*, FILE*, int*, char*);
+void printHelp(int);
+bool checkRes(char* res);
+void storeRes(char*, char**);
+void freeAll(char**, char*, char*, char*, int*, char*);
+char* makeResString(char**);
+int populateBatt(char*);
+char* makeBattString(int, int);
+void printIntoFile(int, char*, FILE*);
+void printBattIntoFile(char*, char**, int, int, FILE*);
+
+// Main function to handle command line arguments and initiate the compacting process
+// It checks for the correct number of arguments and the correct flags
+// If the command is incorrect, it prints the help message
+// If the command is correct, it calls the compactLine function with the input and output file paths
 
 int main(int argc, char *argv[]) {
     if (argc == 1 || (strcmp(argv[1], COMMAND_HELP_FLAG) == 0)) { // help syntax
-        printf("No arguments provided.\n");
-        printf("CompactLog is a command line tool that compacts multiple sequential same log lines into single line such as:\n2024-11-20  8:22:29    18424:   32148 AppAssistManager::CheckAndHideWindow:exe=msedge.exe\n2024-11-20  8:22:29    18424:   32148 AppAssistManager::CheckAndHideWindow:exe=msedge.exe\n2024-11-20  8:22:29    18424:   32148 AppAssistManager::CheckAndHideWindow:exe=msedge.exe\nTo:\n2024-11-20  8:22:29    18424:   32148 AppAssistManager::CheckAndHideWindow:exe=msedge.exe * {number of repeated}\n\nThe command syntax is:\n\nCompactLog -i  {input_logfile} -o {output_logfile} \nCompactLog -h  // help syntax\nCompactLog // help syntax\n");
+        printHelp(0);
         return 0;
     }
     if (argc != COMMAND_NUM_ARGS ||
         (strcmp(argv[1], COMMAND_INPUT_FLAG) != 0) ||
         (strcmp(argv[3], COMMAND_OUTPUT_FLAG) != 0)) { // check if the command is correct
-        printf("The command syntax is:\n\
-            \nCompactLog -i  {input_logfile} -o {output_logfile} \
-            \nCompactLog -h  // help syntax\
-            \nCompactLog // help syntax\n");
+        printHelp(2);
         return 0;
     }
     bool res = compactLine(argv[2], argv[4]);
-
     if (res == false) {
-        fprintf(stderr, "Error processing files: %s, %s \n", argv[2], argv[4]);
+        printf("Error processing files: %s, %s \n", argv[2], argv[4]);
         return 1; // return error code
     }
     printf("Task Complete! Come Again!\n");
@@ -60,58 +68,28 @@ int main(int argc, char *argv[]) {
 bool compactLine(char* inputF, char* outputF) {
     FILE* inputFile = fopen(inputF,"r");
     FILE* outputFile = fopen(outputF, "w");
-    if(NULL == inputFile || NULL == outputFile){
-        fprintf(stderr, "Error opening file: %s: %s \n", inputF, strerror(errno));
+    if (NULL == inputFile || NULL == outputFile) {
         return false;
     }
-    char line[MAX_LINE_LENGTH];
+    char* line = (char *) malloc(MAX_LINE_LENGTH);
     char* prev = NULL;
-    int count = 1;
-
-    while (fgets(line, MAX_LINE_LENGTH, inputFile)) {
-        // trim off \r and \n
-        line[strcspn(line, "\r\n")] = '\0';
-        int len = strlen(line);
-        if (len < DATE_SIZE) {
-            continue; // skip this line if it's too short
-        }
-        // trim off date
-        char no_date[len - DATE_SIZE + 1];
-        strncpy(no_date, line + DATE_SIZE, len - DATE_SIZE);
-
-        // check if its a battery line
-        if (strlen(no_date) > POSITION_OF_RES) {
-            if (no_date[POSITION_OF_RES] == 'r' && no_date[POSITION_OF_RES + 1] == 'e' && no_date[POSITION_OF_RES + 2] == 's' && no_date[POSITION_OF_RES + 3] == '=') {
-            // got to battery method
-                prev = isBatteryLine(line, outputFile, inputFile);
-                // trim line again
-                prev[strcspn(prev, "\r\n")] = '\0';
-                int len = strlen(prev);
-                if (len < DATE_SIZE) {
-                    continue; // skip this line if it's too short
-                }
-                // trim off date
-                char no_date[len - DATE_SIZE + 1];
-                strncpy(no_date, line + DATE_SIZE, len - DATE_SIZE);
-                count = 1;
+    int* count = (int*) malloc(sizeof(int));
+    *count = 1;
+    while (fgets(line, MAX_LINE_LENGTH, inputFile) && strlen(line) > DATE_SIZE) {
+        line = strdup(sameLineLoop(inputFile, count, line, prev)); // check for same lines
+        if (line != NULL) {
+            printIntoFile(*count, prev, outputFile); // print the previous line and count
+            if (checkRes(line)) { // check if the line is a battery line
+                prev = strdup(isBatteryLine(line, outputFile, inputFile, count, prev)); // process the battery line
+            } else {
+                prev = strdup(line);
             }
-        }
-        if (prev == NULL) {
-            prev = strdup(no_date);
-        } else if (strcmp(no_date, prev) == 0) {
-            count++;
-        // } else if (len > DW_CONTROL_POSITION && strncmp(no_date + DW_CONTROL_POSITION, "dwControl=", 10) == 0) {
-        // got to dw method
+            *count = 1;
         } else {
-            if (count > 1) {
-                fprintf(outputFile,"%s * %d\n", prev, count);
-            }
-            fflush(outputFile);
-            prev = strdup(line);
-            count = 1;
+            break;
         }
     }
-    free(prev);
+    freeAll(NULL, NULL, NULL, NULL, count, line);
     fclose(inputFile);
     fclose(outputFile);
     return true;
@@ -121,87 +99,180 @@ bool compactLine(char* inputF, char* outputF) {
 // This function will also write the processed battery information to the output file
 // The inputFile is used to read the next lines if needed
 // The outputFile is used to write the processed battery information
-char* isBatteryLine(char* line, FILE* outputFile, FILE* inputFile) {
-    bool is7 = false;
-    bool is1c = false;
-    bool is6 = false;
-
-    char battString[10]; // free later
-    int battInd = 0;
-    int battMin = 100;
-    int battMax = 0;
-
+char* isBatteryLine(char* line, FILE* outputFile, FILE* inputFile, int* count, char* prev) {
+    char** resArr = (char**) malloc(3 * sizeof(char*));
+    int* battMin = (int*) malloc(sizeof(int));
+    *battMin = INT_MAX; // initialize battMin to max int value
+    int* battMax = (int*) malloc(sizeof(int));
+    *battMax = INT_MIN; // initialize battMax to min int value
+    char* date = (char*) malloc(DATE_SIZE * sizeof(char));
+    strncpy(date, line, DATE_SIZE - 1);
+    line = sameLineLoop(inputFile, count, line, prev); // check for same lines
+    if (line == NULL) {
+        return NULL; // if no more lines, return NULL
+    } else if ((*count) > 1) {
+        printIntoFile(*count, prev, outputFile); // print the previous line and count
+        return line;
+    }
     do {
-        line[strcspn(line, "\r\n")] = '\0';
-        int len = strlen(line);
-        if (len < DATE_SIZE) {
-            continue; // skip this line if it's too short
-        }
-        // trim off date
-        char no_date[len - DATE_SIZE + 1];
-        strncpy(no_date, line + DATE_SIZE, len - DATE_SIZE);
-        len = strlen(no_date);
-
-        if (no_date[POSITION_OF_RES] == 'r' && no_date[POSITION_OF_RES + 1] == 'e' && no_date[POSITION_OF_RES + 2] == 's' && no_date[POSITION_OF_RES + 3] == '=') {
-            if (!is7 && no_date[POSITION_OF_RES_VAL + 2] == '7') {
-                is7 = true;
-            } else if (!is1c && no_date[POSITION_OF_RES_VAL + 2] == '1' && no_date[POSITION_OF_RES_VAL + 3] == 'c') {
-                is1c = true;
-            } else if (!is6 && no_date[POSITION_OF_RES_VAL + 2] == '6') {
-                is6 = true;
-            }
-
-            int i = POSITION_OF_BATTERY_VAL;
-            if (is1c == true) {
-                // position based if res = 0x7, if 0x1c, add one more to line up
-                i = i + 1;
-            }
-            for (i; i <= len; i++) { // populate battString with the value of battery
-                if (i == len || no_date[i] == '\n' || no_date[i] == ' ') {
-                    battString[battInd] = '\0'; // null terminate battString
-                    int battVal = atoi(battString);
-                    if (battMin > battVal) {
-                        battMin = battVal; // update min battery value
-                    }else if (battMax < battVal) {
-                        battMax = battVal; // update max battery value
-                    }
-                    battString[0] = '\0'; // reset battString
-                    battInd = 0; // reset battInd
-                    break;
-                } else {
-                    battString[battInd] = no_date[i]; // append to battString
-                    battInd++;
-                }
-            }
+        line[strcspn(line, "\r\n")] = '\0'; // trim off \r and \n
+        if (checkRes(line)) { // check if the line is a battery line
+            storeRes(line, resArr);
+            int thisBatt = populateBatt(line); // get the battery value
+            compareBattVal(thisBatt, battMin, battMax); // compare the battery value with the min and max
         } else {
-            char* resString = "";
-            if (is7 && !is1c && !is6) {
-                resString = "0x7";
-            } else if (is1c && !is7 && !is6) {
-                resString = "0x1c";
-            } else if (is7 && is1c && !is6) {
-                resString = "0x7, 0x1c";
-            } else if (is6 && !is7 && !is1c) {
-                resString = "0x6";
-            } else if (is6 && is7 && !is1c) {
-                resString = "0x6, 0x7";
-            } else if (is6 && is1c && !is7) {
-                resString = "0x6, 0x1c";
-            } else if (is6 && is7 && is1c) {
-                resString = "0x6, 0x7, 0x1c";
-            }
-
-            if (battMax == battMin || battMin == 100) {
-                sprintf(battString, "%d", battMax);
-            } else if (battMax == 0) {
-                sprintf(battString, "%d", battMin);
-            } else {
-                sprintf(battString, "%d-%d", battMin, battMax);
-            }
-
-            fprintf(outputFile, "NotifyManager::ReportStatusAndWait:curl_easy_perform failed res=%s battery=%s\n", resString, battString);
+            printBattIntoFile(date, resArr, battMin, battMax, outputFile); // print the battery information to the output file
             return line; // return the line as is, no need to write to output file
         }
-    } while (fgets(line, MAX_LINE_LENGTH, inputFile));
+    } while (fgets(line, MAX_LINE_LENGTH, inputFile) && strlen(line) > DATE_SIZE);
     return line;
+}
+
+void printHelp(int x) {
+    if (x < 1) {
+        printf("Arguments provided do not match given syntax.\n");
+        printf("CompactLog is a command line tool that compacts multiple sequential same log lines into single line such as:\n\
+            2024-11-20  8:22:29    18424:   32148 AppAssistManager::CheckAndHideWindow:exe=msedge.exe\n\
+            2024-11-20  8:22:29    18424:   32148 AppAssistManager::CheckAndHideWindow:exe=msedge.exe\n\
+            2024-11-20  8:22:29    18424:   32148 AppAssistManager::CheckAndHideWindow:exe=msedge.exe\n\
+            To:\n\
+            2024-11-20  8:22:29    18424:   32148 AppAssistManager::CheckAndHideWindow:exe=msedge.exe * {number of repeated}\n\n");
+    }
+    if (x <= 2) {
+        printf("The command syntax is:\n\
+            \nCompactLog -i  {input_logfile} -o {output_logfile} \n\
+            CompactLog -h  // help syntax\
+            \nCompactLog // help syntax\n");
+    }
+}
+
+bool checkRes(char* line) {
+    if (strlen(line) > POSITION_OF_RES + 4) {
+        if (line[POSITION_OF_RES] == 'r' &&
+            line[POSITION_OF_RES + 1] == 'e' &&
+            line[POSITION_OF_RES + 2] == 's' && 
+            line[POSITION_OF_RES + 3] == '=') {
+            return true;
+        }
+    }
+    return false;
+}
+void storeRes(char* line, char** resArr) {
+    if (line[POSITION_OF_RES_VAL + 2] == '7') {
+        resArr[0] = malloc(5 * sizeof(char));
+        strcpy(resArr[0], "0x7");
+    } else {
+        resArr[0] = NULL; // no 0x7
+    }
+    if (line[POSITION_OF_RES_VAL + 2] == '1' && line[POSITION_OF_RES_VAL + 3] == 'c') {
+        resArr[1] = malloc(5 * sizeof(char));
+        strcpy(resArr[1], "0x1c");
+    } else {
+        resArr[1] = NULL; // no 0x1c
+    }
+    if (line[POSITION_OF_RES_VAL + 2] == '6') {
+        resArr[2] = malloc(5 * sizeof(char));
+        strcpy(resArr[2], "0x6");
+    } else {
+        resArr[2] = NULL; // no 0x6
+    }
+}
+
+void freeAll(char** resArr, char* resString, char* battString, char* date, int* count, char* line) {
+    for (int i = 0; i < 3; i++) {
+        if (resArr[i] != NULL) {
+            free(resArr[i]);
+        }
+    }
+    free(resArr);
+    free(resString);
+    free(battString);
+    free(date);
+    free(count); // free the memory allocated for count
+    free(line);
+}
+
+char* makeResString(char** resArr) {
+    char* resString = (char*) malloc(20 * sizeof(char));
+    for (int i = 0; i < 3; i++) {
+        if (resArr[i] != NULL) {
+            strcpy(resString, resArr[i]); // free the memory allocated for resArr
+        }
+    }
+    return resString;
+}
+
+int populateBatt(char* line) {
+    char battString[10]; // free later
+    int battInd = 0;
+    for (int i = POSITION_OF_BATTERY_VAL; i <= strlen(line); i++) { // populate battString with the value of battery
+        if (i == strlen(line) || line[i] == '\n' || line[i] == ' ') {
+            battString[battInd] = '\0'; // null terminate battString
+            int battVal = atoi(battString);
+            return battVal; // return the battery value
+        } else if ('=' != line[i]) { // 
+            battString[battInd] = line[i]; // append to battString
+            battInd++;
+        }
+    }
+    return 0;
+}
+
+char* makeBattString(int battMin, int battMax) {
+    char* battString = (char*) malloc(10 * sizeof(char)); // allocate memory for battString
+    if (battString == NULL) {
+        fprintf(stderr, "Memory allocation failed for battString\n");
+        exit(EXIT_FAILURE);
+    }
+    if (battMax == battMin || battMin == INT_MAX) {
+        sprintf(battString, "%d", battMax);
+    } else if (battMax == INT_MIN) {
+        sprintf(battString, "%d", battMin);
+    } else {
+        sprintf(battString, "%d-%d", battMin, battMax);
+    }
+    return battString;
+}
+
+void printIntoFile(int count, char* line, FILE* outputFile) {
+    if (strlen(line) > DATE_SIZE) {
+        if (count > 1) {
+            fprintf(outputFile,"%s * %d\n", line, count);
+        } else {
+            fprintf(outputFile, "%s\n", line);
+        }
+        fflush(outputFile);
+    }
+}
+
+void printBattIntoFile(char* date, char** resArr, int battMin, int battMax, FILE* outputFile) {
+    char* resString = makeResString(resArr);
+    char* battString = makeBattString(battMin, battMax);
+    fprintf(outputFile, 
+        "%s NotifyManager::ReportStatusAndWait:curl_easy_perform failed res=%s battery=%s\n", date, resString, battString);
+    fflush(outputFile);
+    freeAll(resArr, resString, battString, date, NULL, NULL); // free the memory allocated for resArr, resString, battString, and date
+}
+
+char* sameLineLoop(FILE* inputFile, int* count, char* line, char* prev) {
+    while (fgets(line, MAX_LINE_LENGTH, inputFile) && strlen(line) > DATE_SIZE) {
+        line[strcspn(line, "\r\n")] = '\0';   // trim off \r and \n
+        if (prev == NULL) {
+            prev = strdup(line); 
+        } else if (strcmp(line + DATE_SIZE, prev + DATE_SIZE) == 0) {
+            (*count)++;
+        }  else {
+            return line;
+        }
+    }
+    return NULL;
+}
+
+void compareBattVal(int thisBatt, int* battMin, int* battMax) {
+    if (thisBatt < *battMin) {
+        *battMin = thisBatt; // update battMin
+    } 
+    if (thisBatt > *battMax) {
+        *battMax = thisBatt; // update battMax
+    }
 }
