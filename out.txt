@@ -12,7 +12,7 @@
 2023- 3-28 10:56:17     5848:    6976 _RestoreWebHistory: open(C:\ClassPolicy\843767a9-a7d8-4092-be3c-712931234da6.json) failed
 2023- 3-28 10:56:18     5848:    1572 NotifyManager::Run
 2023- 3-28 10:56:18     5848:    1572 ApplyPolicy::SetWebFilterMethod(1)
-2023- 3-28 10:57: 5     5848:    1572 NotifyManager::ReportStatusAndWait:curl_easy_perform failed res=0x7 battery=99
+2023- 3-28 10:57: 5     5848:    1572 NotifyManager::ReportStatusAndWait:curl_easy_perform failed res=0x7 battery=99 * 2
 2023- 3-28 10:59:22     5848:    4768 Autoupdate::Check: curl_easy_perform failed: 0x7
 2023- 3-28 10:59:45     4696:    4700 ServiceHandler: WTS_SESSION_LOCK
 2023- 3-28 10:59:56     5848:    1572 NotifyManager::GetSystemStatus = 0x2
