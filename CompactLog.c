@@ -13,27 +13,32 @@
 #define COMMAND_OUTPUT_FLAG "-o"
 #define COMMAND_HELP_FLAG "-h"
 
-#define MAX_LINE_LENGTH 200
+#define MAX_LINE_LENGTH 250
 #define DATE_SIZE 38
 
 #define POSITION_OF_RES 98
 #define POSITION_OF_RES_VAL 102
 #define POSITION_OF_BATTERY_VAL 114
 
+#define BATT_STR 10
+#define RES_STR 20
+#define RES_ARR_LEN 3
+
 #define INT_MAX 2147483647
 #define INT_MIN -2147483648
 
 bool compactLine(char*, char*);
-char* isBatteryLine(char*, FILE*, FILE*, int*, char*);
+char* isBatteryLine(char*, FILE*, FILE*);
 void printHelp(int);
 bool checkRes(char* res);
 void storeRes(char*, char**);
-void freeAll(char**, char*, char*, char*, int*, char*);
+void freeAll(char**, char*, char*, char*);
 char* makeResString(char**);
 int populateBatt(char*);
 char* makeBattString(int, int);
 void printIntoFile(int, char*, FILE*);
 void printBattIntoFile(char*, char**, int, int, FILE*);
+void checkMalloc(void* ptr);
 
 // Main function to handle command line arguments and initiate the compacting process
 // It checks for the correct number of arguments and the correct flags
@@ -72,24 +77,29 @@ bool compactLine(char* inputF, char* outputF) {
         return false;
     }
     char* line = (char *) malloc(MAX_LINE_LENGTH);
+    checkMalloc(line);
     char* prev = NULL;
-    int* count = (int*) malloc(sizeof(int));
-    *count = 1;
-    while (fgets(line, MAX_LINE_LENGTH, inputFile) && strlen(line) > DATE_SIZE) {
-        line = strdup(sameLineLoop(inputFile, count, line, prev)); // check for same lines
-        if (line != NULL) {
-            printIntoFile(*count, prev, outputFile); // print the previous line and count
+    int count = 1;
+    while (fgets(line, MAX_LINE_LENGTH, inputFile) && feof(inputFile) != EOF) {
+        // if (strlen(line) < DATE_SIZE) {
+        //     continue;
+        // }
+        line[strcspn(line, "\r\n")] = '\0';   // trim off \r and \n
+        if (prev == NULL) {
+            prev = strdup(line); 
+        } else if (strcmp(line + DATE_SIZE, prev + DATE_SIZE) == 0) {
+            count++;
+        }  else {
+            printIntoFile(count, prev, outputFile); // print the previous line and count
             if (checkRes(line)) { // check if the line is a battery line
-                prev = strdup(isBatteryLine(line, outputFile, inputFile, count, prev)); // process the battery line
+                prev = strdup(isBatteryLine(line, outputFile, inputFile)); // process the battery line
             } else {
                 prev = strdup(line);
             }
-            *count = 1;
-        } else {
-            break;
+            count = 1;
         }
     }
-    freeAll(NULL, NULL, NULL, NULL, count, line);
+    free(line);
     fclose(inputFile);
     fclose(outputFile);
     return true;
@@ -99,32 +109,33 @@ bool compactLine(char* inputF, char* outputF) {
 // This function will also write the processed battery information to the output file
 // The inputFile is used to read the next lines if needed
 // The outputFile is used to write the processed battery information
-char* isBatteryLine(char* line, FILE* outputFile, FILE* inputFile, int* count, char* prev) {
+char* isBatteryLine(char* line, FILE* outputFile, FILE* inputFile) {
     char** resArr = (char**) malloc(3 * sizeof(char*));
-    int* battMin = (int*) malloc(sizeof(int));
-    *battMin = INT_MAX; // initialize battMin to max int value
-    int* battMax = (int*) malloc(sizeof(int));
-    *battMax = INT_MIN; // initialize battMax to min int value
+    checkMalloc(resArr);
+    int battMin = INT_MAX; // initialize battMin to max int value
+    int battMax = INT_MIN; // initialize battMax to min int value
     char* date = (char*) malloc(DATE_SIZE * sizeof(char));
+    checkMalloc(date);
     strncpy(date, line, DATE_SIZE - 1);
-    line = sameLineLoop(inputFile, count, line, prev); // check for same lines
-    if (line == NULL) {
-        return NULL; // if no more lines, return NULL
-    } else if ((*count) > 1) {
-        printIntoFile(*count, prev, outputFile); // print the previous line and count
-        return line;
-    }
     do {
+        // if (strlen(line) < DATE_SIZE) {
+        //     continue;
+        // }
         line[strcspn(line, "\r\n")] = '\0'; // trim off \r and \n
         if (checkRes(line)) { // check if the line is a battery line
             storeRes(line, resArr);
             int thisBatt = populateBatt(line); // get the battery value
-            compareBattVal(thisBatt, battMin, battMax); // compare the battery value with the min and max
+            if (thisBatt < battMin) {
+                battMin = thisBatt; // update battMin
+            } 
+            if (thisBatt > battMax) {
+                battMax = thisBatt; // update battMax
+            }
         } else {
             printBattIntoFile(date, resArr, battMin, battMax, outputFile); // print the battery information to the output file
             return line; // return the line as is, no need to write to output file
         }
-    } while (fgets(line, MAX_LINE_LENGTH, inputFile) && strlen(line) > DATE_SIZE);
+    } while (fgets(line, MAX_LINE_LENGTH, inputFile) && feof(inputFile) != EOF);
     return line;
 }
 
@@ -160,26 +171,29 @@ bool checkRes(char* line) {
 void storeRes(char* line, char** resArr) {
     if (line[POSITION_OF_RES_VAL + 2] == '7') {
         resArr[0] = malloc(5 * sizeof(char));
+        checkMalloc(resArr[0]);
         strcpy(resArr[0], "0x7");
     } else {
         resArr[0] = NULL; // no 0x7
     }
     if (line[POSITION_OF_RES_VAL + 2] == '1' && line[POSITION_OF_RES_VAL + 3] == 'c') {
         resArr[1] = malloc(5 * sizeof(char));
+        checkMalloc(resArr[1]);
         strcpy(resArr[1], "0x1c");
     } else {
         resArr[1] = NULL; // no 0x1c
     }
     if (line[POSITION_OF_RES_VAL + 2] == '6') {
         resArr[2] = malloc(5 * sizeof(char));
+        checkMalloc(resArr[2]);
         strcpy(resArr[2], "0x6");
     } else {
         resArr[2] = NULL; // no 0x6
     }
 }
 
-void freeAll(char** resArr, char* resString, char* battString, char* date, int* count, char* line) {
-    for (int i = 0; i < 3; i++) {
+void freeAll(char** resArr, char* resString, char* battString, char* date) {
+    for (int i = 0; i < RES_ARR_LEN; i++) {
         if (resArr[i] != NULL) {
             free(resArr[i]);
         }
@@ -188,13 +202,12 @@ void freeAll(char** resArr, char* resString, char* battString, char* date, int* 
     free(resString);
     free(battString);
     free(date);
-    free(count); // free the memory allocated for count
-    free(line);
 }
 
 char* makeResString(char** resArr) {
-    char* resString = (char*) malloc(20 * sizeof(char));
-    for (int i = 0; i < 3; i++) {
+    char* resString = (char*) malloc(RES_STR * sizeof(char));
+    checkMalloc(resString);
+    for (int i = 0; i < RES_ARR_LEN; i++) {
         if (resArr[i] != NULL) {
             strcpy(resString, resArr[i]); // free the memory allocated for resArr
         }
@@ -203,7 +216,7 @@ char* makeResString(char** resArr) {
 }
 
 int populateBatt(char* line) {
-    char battString[10]; // free later
+    char battString[BATT_STR]; // free later
     int battInd = 0;
     for (int i = POSITION_OF_BATTERY_VAL; i <= strlen(line); i++) { // populate battString with the value of battery
         if (i == strlen(line) || line[i] == '\n' || line[i] == ' ') {
@@ -219,11 +232,8 @@ int populateBatt(char* line) {
 }
 
 char* makeBattString(int battMin, int battMax) {
-    char* battString = (char*) malloc(10 * sizeof(char)); // allocate memory for battString
-    if (battString == NULL) {
-        fprintf(stderr, "Memory allocation failed for battString\n");
-        exit(EXIT_FAILURE);
-    }
+    char* battString = (char*) malloc(BATT_STR * sizeof(char)); // allocate memory for battString
+    checkMalloc(battString);
     if (battMax == battMin || battMin == INT_MAX) {
         sprintf(battString, "%d", battMax);
     } else if (battMax == INT_MIN) {
@@ -235,14 +245,16 @@ char* makeBattString(int battMin, int battMax) {
 }
 
 void printIntoFile(int count, char* line, FILE* outputFile) {
-    if (strlen(line) > DATE_SIZE) {
-        if (count > 1) {
-            fprintf(outputFile,"%s * %d\n", line, count);
-        } else {
-            fprintf(outputFile, "%s\n", line);
-        }
-        fflush(outputFile);
+    // printf("Printing into file\n"); // debug print
+    if (strlen(line) <= DATE_SIZE) {
+        return;
     }
+    if (count > 1) {
+        fprintf(outputFile,"%s * %d\n", line, count);
+    } else {
+        fprintf(outputFile, "%s\n", line);
+    }
+    fflush(outputFile);
 }
 
 void printBattIntoFile(char* date, char** resArr, int battMin, int battMax, FILE* outputFile) {
@@ -251,28 +263,12 @@ void printBattIntoFile(char* date, char** resArr, int battMin, int battMax, FILE
     fprintf(outputFile, 
         "%s NotifyManager::ReportStatusAndWait:curl_easy_perform failed res=%s battery=%s\n", date, resString, battString);
     fflush(outputFile);
-    freeAll(resArr, resString, battString, date, NULL, NULL); // free the memory allocated for resArr, resString, battString, and date
+    freeAll(resArr, resString, battString, date); // free the memory allocated for resArr, resString, battString, and date
 }
 
-char* sameLineLoop(FILE* inputFile, int* count, char* line, char* prev) {
-    while (fgets(line, MAX_LINE_LENGTH, inputFile) && strlen(line) > DATE_SIZE) {
-        line[strcspn(line, "\r\n")] = '\0';   // trim off \r and \n
-        if (prev == NULL) {
-            prev = strdup(line); 
-        } else if (strcmp(line + DATE_SIZE, prev + DATE_SIZE) == 0) {
-            (*count)++;
-        }  else {
-            return line;
-        }
-    }
-    return NULL;
-}
-
-void compareBattVal(int thisBatt, int* battMin, int* battMax) {
-    if (thisBatt < *battMin) {
-        *battMin = thisBatt; // update battMin
-    } 
-    if (thisBatt > *battMax) {
-        *battMax = thisBatt; // update battMax
+void checkMalloc(void* ptr) {
+    if (ptr == NULL) {
+        fprintf(stderr, "Memory allocation failed\n");
+        exit(EXIT_FAILURE);
     }
 }
