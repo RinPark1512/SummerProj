@@ -34,7 +34,7 @@ bool checkRes(char* res);
 void storeRes(char*, char**);
 void freeAll(char**, char*, char*, char*);
 char* makeResString(char**);
-int populateBatt(char*);
+int populateBatt(char*); 
 char* makeBattString(int, int);
 void printIntoFile(int, char*, FILE*);
 void printBattIntoFile(char*, char**, int, int, FILE*);
