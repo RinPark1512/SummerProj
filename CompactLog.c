@@ -7,6 +7,7 @@
 #include <sys/errno.h>
 #include <stdbool.h>
 #include <ctype.h>
+#include "compactlog.h"
 
 #define COMMAND_NUM_ARGS 5
 #define COMMAND_INPUT_FLAG "-i"
@@ -27,24 +28,10 @@
 #define INT_MAX 2147483647
 #define INT_MIN -2147483648
 
-bool compactLine(char*, char*);
-char* isBatteryLine(char*, FILE*, FILE*);
-void printHelp(int);
-bool checkRes(char* res);
-void storeRes(char*, char**);
-void freeAll(char**, char*, char*, char*);
-char* makeResString(char**);
-int populateBatt(char*); 
-char* makeBattString(int, int);
-void printIntoFile(int, char*, FILE*);
-void printBattIntoFile(char*, char**, int, int, FILE*);
-void checkMalloc(void* ptr);
-
 // Main function to handle command line arguments and initiate the compacting process
 // It checks for the correct number of arguments and the correct flags
 // If the command is incorrect, it prints the help message
 // If the command is correct, it calls the compactLine function with the input and output file paths
-
 int main(int argc, char *argv[]) {
     if (argc == 1 || (strcmp(argv[1], COMMAND_HELP_FLAG) == 0)) { // help syntax
         printHelp(0);
@@ -104,6 +91,7 @@ bool compactLine(char* inputF, char* outputF) {
     fclose(outputFile);
     return true;
 }
+
 // Function to check if the line is a battery line and process it accordingly
 // Returns the line if it is a battery line, otherwise returns NULL
 // This function will also write the processed battery information to the output file
@@ -168,6 +156,7 @@ bool checkRes(char* line) {
     }
     return false;
 }
+
 void storeRes(char* line, char** resArr) {
     if (line[POSITION_OF_RES_VAL + 2] == '7') {
         resArr[0] = malloc(5 * sizeof(char));
