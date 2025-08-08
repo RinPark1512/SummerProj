@@ -9,49 +9,6 @@
 #include <ctype.h>
 #include "compactlog.h"
 
-#define COMMAND_NUM_ARGS 5
-#define COMMAND_INPUT_FLAG "-i"
-#define COMMAND_OUTPUT_FLAG "-o"
-#define COMMAND_HELP_FLAG "-h"
-
-#define MAX_LINE_LENGTH 250
-#define DATE_SIZE 38
-
-#define POSITION_OF_RES 98
-#define POSITION_OF_RES_VAL 102
-#define POSITION_OF_BATTERY_VAL 114
-
-#define BATT_STR 10
-#define RES_STR 20
-#define RES_ARR_LEN 3
-
-#define INT_MAX 2147483647
-#define INT_MIN -2147483648
-
-// Main function to handle command line arguments and initiate the compacting process
-// It checks for the correct number of arguments and the correct flags
-// If the command is incorrect, it prints the help message
-// If the command is correct, it calls the compactLine function with the input and output file paths
-int main(int argc, char *argv[]) {
-    if (argc == 1 || (strcmp(argv[1], COMMAND_HELP_FLAG) == 0)) { // help syntax
-        printHelp(0);
-        return 0;
-    }
-    if (argc != COMMAND_NUM_ARGS ||
-        (strcmp(argv[1], COMMAND_INPUT_FLAG) != 0) ||
-        (strcmp(argv[3], COMMAND_OUTPUT_FLAG) != 0)) { // check if the command is correct
-        printHelp(2);
-        return 0;
-    }
-    bool res = compactLine(argv[2], argv[4]);
-    if (res == false) {
-        printf("Error processing files: %s, %s \n", argv[2], argv[4]);
-        return 1; // return error code
-    }
-    printf("Task Complete! Come Again!\n");
-    return 0;
-}
-
 // Function to compact log lines
 // It reads the input file line by line, checks for duplicate lines, and writes the compacted output to the output file
 // If a battery line is detected, it processes it using the isBatteryLine function

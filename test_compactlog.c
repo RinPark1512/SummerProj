@@ -15,7 +15,7 @@ void test_checkRes() {
 }
 
 void test_storeRes() {
-    char line[] = "....res=0x1c battery=90";
+    char line[] = "2024- 8-26  6:57:42    19968:    1324 NotifyManager::ReportStatusAndWait:curl_easy_perform failed res=0x1c battery=16";
     char* resArr[3] = {NULL, NULL, NULL};
     storeRes(line, resArr);
     assert(resArr[1] != NULL && strcmp(resArr[1], "0x1c") == 0);
@@ -42,7 +42,7 @@ void test_makeBattString() {
 }
 
 void test_populateBatt() {
-    char line[] = "NotifyManager::ReportStatusAndWait:curl_easy_perform failed res=0x1c battery=95";
+    char line[] = "2024- 8-26  6:57:42    19968:    1324 NotifyManager::ReportStatusAndWait:curl_easy_perform failed res=0x1c battery=95";
     int batt = populateBatt(line);
     assert(batt == 95);
 }
