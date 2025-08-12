@@ -25,9 +25,6 @@ bool compactLine(char* inputF, char* outputF) {
     char* prev = NULL;
     int count = 1;
     while (fgets(line, MAX_LINE_LENGTH, inputFile) && feof(inputFile) != EOF) {
-        // if (strlen(line) < DATE_SIZE) {
-        //     continue;
-        // }
         line[strcspn(line, "\r\n")] = '\0';   // trim off \r and \n
         if (prev == NULL) {
             prev = strdup(line); 
@@ -63,9 +60,6 @@ char* isBatteryLine(char* line, FILE* outputFile, FILE* inputFile) {
     checkMalloc(date);
     strncpy(date, line, DATE_SIZE - 1);
     do {
-        // if (strlen(line) < DATE_SIZE) {
-        //     continue;
-        // }
         line[strcspn(line, "\r\n")] = '\0'; // trim off \r and \n
         if (checkRes(line)) { // check if the line is a battery line
             storeRes(line, resArr);
@@ -191,7 +185,6 @@ char* makeBattString(int battMin, int battMax) {
 }
 
 void printIntoFile(int count, char* line, FILE* outputFile) {
-    // printf("Printing into file\n"); // debug print
     if (strlen(line) <= DATE_SIZE) {
         return;
     }
